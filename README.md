@@ -35,8 +35,7 @@ Esta entrega continúa el proyecto iniciado en la Pre-entrega 1 y conserva el CR
 ### Clonar el repositorio
 
 ```bash
-# Reemplazar por el enlace del repositorio de Pre-entrega 7 cuando esté publicado
-git clone URL_DEL_REPOSITORIO_PRE_ENTREGA_7
+git clone https://github.com/sanbresso/backend-2-pre-entrega-7.git
 cd backend-2-pre-entrega-7
 ```
 
@@ -588,7 +587,6 @@ Posibles mejoras futuras:
 - Protección CSRF y limitación de intentos de autenticación.
 - Verificación de roles vigentes en MongoDB.
 - Pruebas automatizadas unitarias e integrales adicionales, incluyendo varios procesos concurrentes.
-- Validación de reducciones de `capacity` frente a reservas activas en las actualizaciones de eventos.
 - Reintentos persistentes de correo mediante cola de trabajos o patrón *Transactional Outbox*.
 - Índices adicionales y observabilidad de consultas.
 - Eventos de dominio y notificaciones más completas.
@@ -714,7 +712,7 @@ La creación y la cancelación utilizan transacciones de MongoDB a través de Mo
 
 El índice único parcial agrega una segunda protección frente a duplicados activos. Esta solución fue probada con dos solicitudes simultáneas sobre un evento de un único cupo.
 
-**Alcance pendiente de revisión:** al modificar la capacidad total mediante la actualización de eventos, conviene impedir que se reduzca por debajo de los cupos activos ya reservados. Esta validación es distinta de la reserva de nuevos cupos.
+**Protección de capacidad al actualizar eventos:** al modificar `Event.capacity`, el servicio consulta los cupos activos (`confirmed` y `pending`) dentro de una transacción coordinada sobre el mismo evento. Si la capacidad propuesta es inferior a los cupos reservados, devuelve `409 Conflict` y conserva la capacidad anterior. Se comprobó con un evento de capacidad 3 y 2 cupos reservados: el intento de reducir la capacidad a 1 fue rechazado y MongoDB mantuvo 3 cupos totales, 2 ocupados y 1 disponible.
 
 ## 16. Emails de confirmación con Nodemailer
 
@@ -768,6 +766,7 @@ Se realizaron las siguientes comprobaciones con Postman y MongoDB Atlas:
 | `admin` consulta tickets de cualquier evento | `200 OK` |
 | Reinscripción después de cancelar | Nuevo ticket `confirmed`; se mantiene el anterior `cancelled` |
 | Envío de confirmación con Gmail SMTP | Email enviado tras confirmación del ticket |
+| Reducir capacidad de 3 a 1 con 2 cupos activos | `409 Conflict`; capacidad 3 y 2 cupos activos conservados |
 
 ### Prueba de concurrencia
 
@@ -783,7 +782,7 @@ node --env-file=.env scripts/test-concurrencia.mjs
 
 ## 18. Entrega
 
-La Pre-entrega 7 se publicará en un repositorio público e independiente de GitHub, conservando el historial de pre-entregas anteriores.
+La Pre-entrega 7 se publica en un repositorio público e independiente de GitHub, conservando el historial de pre-entregas anteriores.
 
 Archivos requeridos:
 
@@ -797,7 +796,7 @@ Archivos requeridos:
 
 No se incluyen `.env`, `node_modules`, credenciales ni datos privados.
 
-**Repositorio de Pre-entrega 7:** pendiente de crear y verificar en GitHub. Actualizar esta línea con el enlace público definitivo antes de entregar.
+**Repositorio de Pre-entrega 7:** https://github.com/sanbresso/backend-2-pre-entrega-7
 
 ---
 
