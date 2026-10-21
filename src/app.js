@@ -7,6 +7,7 @@ import eventsRouter from "./routes/events.router.js";
 import sessionsRouter from "./routes/sessions.router.js";
 import adminRouter from "./routes/admin.router.js";
 import errorHandler from "./middlewares/error.middleware.js";
+import ticketsRouter from "./routes/tickets.router.js";
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.use("/api/health", healthRouter);
 app.use("/api/events", eventsRouter);
 app.use("/api/sessions", sessionsRouter);
 app.use("/api/admin", adminRouter);
+app.use("/api/tickets", ticketsRouter);
 
 app.use(errorHandler);
 

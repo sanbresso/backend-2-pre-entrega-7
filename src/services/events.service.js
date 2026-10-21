@@ -5,8 +5,13 @@ import {
   countEvents,
   findEventById,
   insertEvent,
-  saveEvent
+  saveEvent,
+  lockEventForReservation
 } from "../repositories/events.repository.js";
+
+import {
+  countOccupiedSlots
+} from "../repositories/tickets.repository.js";
 
 const createHttpError = (statusCode, message) => {
   const error = new Error(message);
@@ -433,9 +438,49 @@ export async function updateEvent(event, updateData = {}) {
     }
   }
 
+  if (Object.hasOwn(updates, "capacity")) {
+    return mongoose.connection.transaction(async (session) => {
+      const currentEvent = await lockEventForReservation(
+        event._id,
+        { session }
+      );
+
+      if (!currentEvent) {
+        throw createHttpError(404, "Evento no encontrado");
+      }
+
+      if (
+        currentEvent.status === "cancelled" ||
+        currentEvent.status === "finished"
+      ) {
+        throw createHttpError(
+          409,
+          "No se puede modificar un evento cancelado o finalizado"
+        );
+      }
+
+      const occupied = await countOccupiedSlots(
+        currentEvent._id,
+        { session }
+      );
+
+      if (updates.capacity < occupied) {
+        throw createHttpError(
+          409,
+          `No se puede reducir la capacidad a ${updates.capacity}. Hay ${occupied} cupos reservados`
+        );
+      }
+
+      currentEvent.set(updates);
+
+      return currentEvent.save({ session });
+    });
+  }
+
   event.set(updates);
 
   return saveEvent(event);
+
 }
 
 const allowedTransitions = {

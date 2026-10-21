@@ -1,10 +1,10 @@
 # Plataforma de Eventos e Inscripciones
 
-## Pre-entrega 6 — Entidad Events y lógica de negocio
+## Pre-entrega 7 — Tickets, inscripciones y control de cupos
 
 Proyecto de **PBE II — Diseño y Arquitectura Backend (Coderhouse)** desarrollado con Node.js, Express, MongoDB Atlas y Mongoose.
 
-Esta entrega continúa el proyecto iniciado en la Pre-entrega 1 e incorpora el CRUD de eventos solicitado, validaciones de negocio, control de permisos por roles y propiedad, filtros avanzados, paginación, ordenamiento y cancelación lógica.
+Esta entrega continúa el proyecto iniciado en la Pre-entrega 1 y conserva el CRUD de eventos, sus reglas de negocio, autenticación y autorización. La Pre-entrega 7 incorpora el **modelo Ticket**, inscripciones autenticadas, prevención de duplicados, control transaccional de cupos, cancelación lógica, consultas por usuario o evento y notificaciones de confirmación con **Nodemailer (Gmail SMTP)**.
 
 ## 1. Evolución del proyecto
 
@@ -14,6 +14,7 @@ Esta entrega continúa el proyecto iniciado en la Pre-entrega 1 e incorpora el C
 - **Pre-entrega 4:** estrategias Passport.js `register`, `login` y `current`.
 - **Pre-entrega 5:** autorización por roles (RBAC), control de propiedad de eventos y rutas administrativas.
 - **Pre-entrega 6:** modelo Event completo, reglas de negocio, endpoints de gestión, filtros, paginación, ordenamiento y control de estados.
+- **Pre-entrega 7:** modelo Ticket relacionado con User y Event, inscripciones, cupos, historial de cancelaciones, permisos y confirmación por email.
 
 ## 2. Tecnologías utilizadas
 
@@ -25,7 +26,8 @@ Esta entrega continúa el proyecto iniciado en la Pre-entrega 1 e incorpora el C
 - bcrypt.
 - cookie-parser.
 - dotenv.
-- Postman para pruebas manuales.
+- Nodemailer y SMTP (Gmail con contraseña de aplicación).
+- Postman para pruebas manuales y un script de concurrencia.
 - Git y GitHub.
 
 ## 3. Instalación y ejecución
@@ -33,8 +35,9 @@ Esta entrega continúa el proyecto iniciado en la Pre-entrega 1 e incorpora el C
 ### Clonar el repositorio
 
 ```bash
-git clone https://github.com/sanbresso/backend-2-pre-entrega-6.git
-cd backend-2-pre-entrega-6
+# Reemplazar por el enlace del repositorio de Pre-entrega 7 cuando esté publicado
+git clone URL_DEL_REPOSITORIO_PRE_ENTREGA_7
+cd backend-2-pre-entrega-7
 ```
 
 ### Instalar dependencias
@@ -53,9 +56,16 @@ NODE_ENV=development
 MONGO_URL=mongodb+srv://USUARIO:CONTRASENA@TU_CLUSTER.mongodb.net/plataforma_eventos
 JWT_SECRET=REEMPLAZAR_POR_CLAVE_SECRETA_SEGURA
 JWT_EXPIRES_IN=1h
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USER=tu_correo@gmail.com
+MAIL_PASS=CONTRASENA_DE_APLICACION_DE_GMAIL
+MAIL_FROM="Plataforma de Eventos <tu_correo@gmail.com>"
 ```
 
-Las variables deben adaptarse al entorno y a la conexión MongoDB correspondiente.
+Las variables deben adaptarse al entorno y a la conexión MongoDB correspondiente. Para Gmail se utiliza una **contraseña de aplicación**; no la contraseña habitual de la cuenta. La verificación en dos pasos debe estar habilitada para generar esa contraseña.
+
+El archivo `.env.example` contiene valores de ejemplo y puede publicarse. El archivo `.env`, las cookies, tokens y credenciales reales **nunca** deben subirse a GitHub.
 
 ### Iniciar el servidor
 
@@ -71,7 +81,7 @@ Modo normal:
 npm start
 ```
 
-El script de desarrollo utiliza `node --watch src/server.js`.
+El script de desarrollo utiliza `node --watch src/server.js`. Revisar el script efectivo en `package.json` si se modifica la configuración.
 
 URL base utilizada en las pruebas:
 
@@ -89,26 +99,33 @@ src/
 ├── server.js
 ├── config/
 │   ├── db.js
-│   └── passport.config.js
+│   ├── passport.config.js
+│   └── mail.config.js
 ├── models/
 │   ├── User.js
-│   └── Event.js
+│   ├── Event.js
+│   └── Ticket.js
 ├── routes/
 │   ├── health.router.js
 │   ├── sessions.router.js
 │   ├── events.router.js
+│   ├── tickets.router.js
 │   └── admin.router.js
 ├── controllers/
 │   ├── health.controller.js
 │   ├── sessions.controller.js
 │   ├── events.controller.js
+│   ├── tickets.controller.js
 │   └── admin.controller.js
 ├── services/
 │   ├── sessions.service.js
-│   └── events.service.js
+│   ├── events.service.js
+│   ├── tickets.service.js
+│   └── email.service.js
 ├── repositories/
 │   ├── users.repository.js
-│   └── events.repository.js
+│   ├── events.repository.js
+│   └── tickets.repository.js
 ├── dao/
 │   └── users.dao.js
 ├── middlewares/
@@ -120,13 +137,16 @@ src/
 └── utils/
     ├── hash.js
     └── jwt.js
+
+scripts/
+└── test-concurrencia.mjs
 ```
 
 ### Responsabilidades
 
 - **Models:** esquemas de datos y validaciones de Mongoose.
 - **Repositories/DAO:** operaciones de persistencia y consulta a MongoDB.
-- **Services:** reglas de negocio, validaciones, visibilidad y transiciones de estado.
+- **Services:** reglas de negocio, validaciones, visibilidad, cupos, transiciones de estado y notificaciones.
 - **Controllers:** manejo de solicitudes y respuestas HTTP.
 - **Routes:** definición de endpoints y aplicación de middlewares.
 - **Middlewares:** autenticación, autorización, propiedad y manejo de errores.
@@ -146,6 +166,7 @@ El modelo Event contiene los siguientes campos:
 | price | Number | Mayor o igual a 0 |
 | status | String | Enum de estados permitidos |
 | organizer | ObjectId | Referencia obligatoria a User |
+| reservationRevision | Number | Contador técnico usado para coordinar reservas concurrentes |
 
 El campo `organizer` utiliza una referencia de Mongoose:
 
@@ -531,7 +552,7 @@ Se realizaron pruebas funcionales durante el desarrollo.
 
 También se verificaron operaciones de registro, login y consulta de sesión en entregas anteriores.
 
-Las pruebas se realizaron manualmente con Postman. Actualmente no se incluye una suite de pruebas automatizadas; el script `npm test` permanece como marcador.
+Las pruebas de eventos se realizaron manualmente con Postman. Además se incluye `scripts/test-concurrencia.mjs` para la Pre-entrega 7; no constituye una suite completa de tests automatizados. El script `npm test` no se utiliza aquí como evidencia de pruebas.
 
 Para reproducir las pruebas de roles:
 
@@ -555,7 +576,10 @@ Medidas implementadas:
 - Restricción de campos modificables.
 - Validaciones de datos y reglas de negocio.
 - Protección de eventos privados.
-- Cancelación lógica.
+- Cancelación lógica de eventos y tickets.
+- Índice único parcial para evitar tickets activos duplicados.
+- Transacciones y coordinación de reservas para control concurrente de cupos.
+- Credenciales de correo en variables de entorno.
 - Exclusión de secretos mediante `.gitignore`.
 
 Posibles mejoras futuras:
@@ -563,15 +587,203 @@ Posibles mejoras futuras:
 - Pruebas automatizadas.
 - Protección CSRF y limitación de intentos de autenticación.
 - Verificación de roles vigentes en MongoDB.
-- Actualizaciones condicionales para proteger cambios concurrentes.
-- Índices adicionales para optimización de consultas.
-- Inscripciones, tickets y control de cupos.
-- Eventos de dominio y notificaciones.
+- Pruebas automatizadas unitarias e integrales adicionales, incluyendo varios procesos concurrentes.
+- Validación de reducciones de `capacity` frente a reservas activas en las actualizaciones de eventos.
+- Reintentos persistentes de correo mediante cola de trabajos o patrón *Transactional Outbox*.
+- Índices adicionales y observabilidad de consultas.
+- Eventos de dominio y notificaciones más completas.
 - Documentación interactiva con OpenAPI/Swagger.
 
-## 13. Entrega
+## 13. Modelo Ticket y relaciones (Pre-entrega 7)
 
-La Pre-entrega 6 se publica en un repositorio público de GitHub.
+`Ticket` representa una inscripción y se vincula con los modelos `User` y `Event` mediante **referencias `ObjectId`**, sin guardar objetos de usuario o evento embebidos.
+
+| Campo | Tipo | Uso |
+|---|---|---|
+| `user` | ObjectId (`ref: "User"`) | Usuario inscripto |
+| `event` | ObjectId (`ref: "Event"`) | Evento al que se inscribe |
+| `status` | String (enum) | `confirmed`, `pending` o `cancelled` |
+| `quantity` | Number | Entero mayor que cero |
+| `reservationCode` | String | Código único de reserva |
+| `createdAt` | Date | Fecha de creación, generada por `timestamps` |
+| `cancelledAt` | Date o `null` | Fecha de cancelación, cuando corresponda |
+| `updatedAt` | Date | Fecha de última modificación, generada por `timestamps` |
+
+`reservationCode` tiene índice único. El índice **único parcial** `{ user: 1, event: 1 }` aplica a los tickets con estado `confirmed` o `pending`: impide tener más de un ticket activo del mismo usuario para el mismo evento, pero permite conservar múltiples registros históricos `cancelled`.
+
+### Estados de Ticket
+
+- `confirmed`: reserva creada y confirmada; **ocupa** `quantity` cupos.
+- `pending`: estado previsto por el modelo; se considera **activo y ocupa** `quantity` cupos en el cálculo actual.
+- `cancelled`: cancelación lógica; **no ocupa** cupos y mantiene el historial.
+
+El flujo de alta implementado en esta pre-entrega genera tickets con estado `confirmed`. No se implementó una lista de espera automática; `pending` está definido en el esquema y contemplado en la regla de capacidad.
+
+## 14. Endpoints de tickets y autorización
+
+| Método | Ruta | Acceso | Descripción |
+|---|---|---|---|
+| `POST` | `/api/events/:eid/tickets` | Usuario autenticado | Crear inscripción para el usuario del JWT |
+| `GET` | `/api/tickets/my-tickets` | Usuario autenticado | Consultar solo los tickets propios |
+| `GET` | `/api/events/:eid/tickets` | `organizer` dueño del evento o `admin` | Consultar tickets del evento |
+| `PATCH` | `/api/tickets/:tid/cancel` | Dueño del ticket o `admin` | Cancelar sin borrar el documento |
+
+La identidad se obtiene de `req.user.id`, suministrada por el middleware de autenticación; el cliente **no** elige el usuario de la inscripción mediante el body.
+
+### Crear una inscripción
+
+```http
+POST /api/events/ID_EVENTO/tickets
+Content-Type: application/json
+```
+
+```json
+{
+  "quantity": 1
+}
+```
+
+La sesión debe estar iniciada mediante `/api/sessions/login`, que establece la cookie HttpOnly `currentUser`.
+
+Ejemplo abreviado de éxito (`201 Created`):
+
+```json
+{
+  "status": "success",
+  "message": "Inscripción confirmada",
+  "payload": {
+    "user": "ID_USUARIO",
+    "event": "ID_EVENTO",
+    "status": "confirmed",
+    "quantity": 1,
+    "reservationCode": "TCK-UUID",
+    "cancelledAt": null
+  }
+}
+```
+
+### Consultar mis tickets
+
+```http
+GET /api/tickets/my-tickets
+```
+
+Devuelve solo registros cuyo `user` corresponde al usuario autenticado. El campo `event` se obtiene por `populate()` con selección de `title`, `date` y `location`, sin exponer información sensible de terceros.
+
+### Consultar inscripciones de un evento
+
+```http
+GET /api/events/ID_EVENTO/tickets
+```
+
+Un usuario común recibe `403`. Un `organizer` solo puede acceder si `event.organizer` coincide con su ID; `admin` puede consultar cualquier evento.
+
+### Cancelar un ticket
+
+```http
+PATCH /api/tickets/ID_TICKET/cancel
+```
+
+No requiere body. Valida existencia, propiedad o rol `admin` y estado activo. La operación cambia `status` a `cancelled`, asigna `cancelledAt` y conserva el documento; la segunda cancelación devuelve `409 Conflict`.
+
+## 15. Inscripciones, control de cupos y concurrencia
+
+Las reglas de negocio se implementan en `src/services/tickets.service.js`, no en los controladores HTTP.
+
+Para confirmar una inscripción se comprueba que:
+
+1. El usuario está autenticado y el ID del evento es válido.
+2. `quantity` es un entero positivo.
+3. El evento existe y está en estado `published`.
+4. Su fecha de inicio es futura.
+5. El usuario no tiene ya un ticket activo para ese evento.
+6. La cantidad solicitada no supera los cupos disponibles.
+
+**Regla de capacidad:**
+
+```text
+cuposOcupados = SUM(quantity de tickets con status confirmed o pending)
+cuposDisponibles = Event.capacity - cuposOcupados
+```
+
+Los tickets `cancelled` no se incluyen en la suma. **`Event.capacity` representa la capacidad total y no se reduce con cada inscripción.** Cuando una inscripción se cancela, los cupos se liberan automáticamente al excluirla de la consulta de tickets activos.
+
+### Consistencia transaccional
+
+La creación y la cancelación utilizan transacciones de MongoDB a través de Mongoose. El servicio efectúa una escritura de coordinación sobre `Event.reservationRevision`, comprueba duplicados y disponibilidad y persiste el Ticket dentro de la transacción. Las escrituras concurrentes sobre el mismo evento provocan conflictos transaccionales, permitiendo revalidar la disponibilidad durante los reintentos correspondientes.
+
+El índice único parcial agrega una segunda protección frente a duplicados activos. Esta solución fue probada con dos solicitudes simultáneas sobre un evento de un único cupo.
+
+**Alcance pendiente de revisión:** al modificar la capacidad total mediante la actualización de eventos, conviene impedir que se reduzca por debajo de los cupos activos ya reservados. Esta validación es distinta de la reserva de nuevos cupos.
+
+## 16. Emails de confirmación con Nodemailer
+
+El proyecto utiliza `src/config/mail.config.js` para definir el transporte SMTP y `src/services/email.service.js` para construir y enviar el mensaje.
+
+Variables requeridas (ver `.env.example`):
+
+| Variable | Uso |
+|---|---|
+| `MAIL_HOST` | Servidor SMTP; para Gmail: `smtp.gmail.com` |
+| `MAIL_PORT` | Puerto SMTP; para Gmail: `587` |
+| `MAIL_USER` | Dirección de Gmail remitente |
+| `MAIL_PASS` | Contraseña de aplicación de Google |
+| `MAIL_FROM` | Remitente visible del correo |
+
+La cuenta Gmail debe tener habilitada la verificación en dos pasos para crear una contraseña de aplicación cuando esta opción esté disponible.
+
+La notificación incluye título del evento, `reservationCode`, `quantity` y estado confirmado. Se inicia **después de que la transacción se confirma**. El proceso de correo es asíncrono: si el SMTP falla, el Ticket permanece creado y la solicitud HTTP no espera el envío. El error se registra en la consola del servidor.
+
+**Límite de esta implementación:** el envío es de tipo *best effort*; no existe todavía una cola persistente de reintentos. Si el servidor se interrumpe inmediatamente después de guardar el ticket, el email podría no enviarse.
+
+Para verificar la conexión SMTP sin enviar un email:
+
+```bash
+node --env-file=.env --input-type=module -e 'import transporter from "./src/config/mail.config.js"; await transporter.verify(); console.log("SMTP OK")'
+```
+
+Para comprobar la recepción real se debe inscribir un usuario con una dirección de correo accesible y revisar la bandeja de entrada. Las direcciones `@example.com` usadas en otras pruebas no son buzones reales de recepción.
+
+## 17. Pruebas de tickets (Pre-entrega 7)
+
+Se realizaron las siguientes comprobaciones con Postman y MongoDB Atlas:
+
+| Escenario | Respuesta o efecto esperado |
+|---|---|
+| Crear ticket en evento publicado y futuro | `201 Created` y ticket `confirmed` |
+| Solicitud sin sesión | `401 Unauthorized` |
+| Evento inexistente | `404 Not Found` |
+| Evento cancelado (`cancelled`) | `409 Conflict` |
+| Evento finalizado (`finished`) | `409 Conflict` |
+| Evento publicado cuya fecha ya pasó | `409 Conflict` |
+| `quantity` mayor que los cupos disponibles | `409 Conflict` |
+| Usuario con inscripción activa duplicada | `409 Conflict` |
+| Consultar tickets propios | `200 OK` con `populate` de evento |
+| Cancelar ticket propio | `200 OK`, estado `cancelled`, `cancelledAt` |
+| Segunda cancelación | `409 Conflict` |
+| Usuario intenta cancelar ticket ajeno | `403 Forbidden` |
+| `user` consulta tickets de un evento | `403 Forbidden` |
+| `organizer` consulta tickets de evento ajeno | `403 Forbidden` |
+| `organizer` consulta tickets de evento propio | `200 OK` |
+| `admin` consulta tickets de cualquier evento | `200 OK` |
+| Reinscripción después de cancelar | Nuevo ticket `confirmed`; se mantiene el anterior `cancelled` |
+| Envío de confirmación con Gmail SMTP | Email enviado tras confirmación del ticket |
+
+### Prueba de concurrencia
+
+El script `scripts/test-concurrencia.mjs` inicia **dos inscripciones simultáneas** para un evento de prueba `published` con **un cupo disponible**. Verifica la cantidad de tickets activos y los cupos ocupados al finalizar.
+
+```bash
+node --env-file=.env scripts/test-concurrencia.mjs
+```
+
+**Resultado observado:** un usuario obtuvo la inscripción; el otro recibió el error `Cupos insuficientes. Disponibles: 0`; quedó un ticket activo, un cupo ocupado y cero disponibles. El script informó `PRUEBA SUPERADA: no hubo sobreventa`.
+
+**Precaución:** el script contiene IDs de prueba y **crea inscripciones reales en la base de datos configurada**. Requiere un evento preparado con exactamente un cupo libre y usuarios de prueba válidos; no debe ejecutarse repetidamente sobre el mismo evento sin restaurar los datos. También intenta enviar el correo de confirmación correspondiente.
+
+## 18. Entrega
+
+La Pre-entrega 7 se publicará en un repositorio público e independiente de GitHub, conservando el historial de pre-entregas anteriores.
 
 Archivos requeridos:
 
@@ -581,10 +793,11 @@ Archivos requeridos:
 - `.env.example`
 - `README.md`
 - Código fuente dentro de `src/`
+- Script de concurrencia en `scripts/`
 
 No se incluyen `.env`, `node_modules`, credenciales ni datos privados.
 
-**Repositorio:** https://github.com/sanbresso/backend-2-pre-entrega-6
+**Repositorio de Pre-entrega 7:** pendiente de crear y verificar en GitHub. Actualizar esta línea con el enlace público definitivo antes de entregar.
 
 ---
 

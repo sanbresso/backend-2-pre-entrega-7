@@ -26,3 +26,20 @@ export async function insertEvent(eventData) {
 export async function saveEvent(event) {
   return event.save();
 }
+
+export async function lockEventForReservation(
+  eventId,
+  { session } = {}
+) {
+  return Event.findOneAndUpdate(
+    { _id: eventId },
+    {
+      $inc: { reservationRevision: 1 }
+    },
+    {
+  returnDocument: "after",
+  session,
+  runValidators: true
+}
+  );
+}

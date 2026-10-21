@@ -41,6 +41,13 @@ const eventSchema = new mongoose.Schema(
       }
     },
 
+    reservationRevision: {
+  type: Number,
+  default: 0,
+  min: 0,
+  select: false
+},
+
     price: {
       type: Number,
       required: [true, "El precio es obligatorio"],
